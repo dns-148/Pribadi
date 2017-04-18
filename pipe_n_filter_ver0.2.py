@@ -1,13 +1,17 @@
 import threading
 import sys
 import os.path
+import binascii
+# from bitarray import bitarray
 from copy import copy
 from lockfile import FileLock
 from datetime import datetime
 import time
 
+exit_flag = False
 
-class FilterInput():
+
+class FilterInput:
     def __init__(self):
         self.filename = ""
         self.plain_data = ""
@@ -54,7 +58,7 @@ class Tree:
         self.alphabet = alpha
 
 
-class FilterConstruct():
+class FilterConstruct:
     def __init__(self):
         self.busy = False
         self.output = None
@@ -66,33 +70,31 @@ class FilterConstruct():
         self.processing = filter_input[0]
 
     def run(self):
-        if self.filter_input:
-            print "--ID " + self.processing + " Running FilterConstruct"
-            self.busy = True
-            self.output = None
-            input_text = self.filter_input
-            temp_count = []
-            temp_result = []
-            temp_list = list(set(input_text))
-            for i in range(0, len(temp_list)):
-                count = input_text.count(i)
-                temp_count.append(count)
-            temp_count2 = copy(temp_count)
-            temp_list2 = []
-            for i in range(0, len(temp_list)):
-                min_index = temp_count.index(min(temp_count))
-                temp_tree = Tree()
-                temp_tree.redeclare(temp_list[min_index], temp_count[min_index])
-                temp_result.append(temp_tree)
-                temp_list2.append(temp_list[min_index])
-                del temp_count[min_index]
-                del temp_list[min_index]
-            temp_count2.sort(reverse=True)
-            self.output = [temp_result, temp_count2, input_text, temp_list2, self.filter_input[1]]
-            self.busy = False
+        self.busy = True
+        print "--ID " + self.processing + " Running FilterConstruct"
+        input_text = self.filter_input[0]
+        temp_count = []
+        temp_result = []
+        temp_list = list(set(input_text))
+        for i in temp_list:
+            count = input_text.count(i)
+            temp_count.append(count)
+        temp_count2 = copy(temp_count)
+        temp_list2 = []
+        for i in range(0, len(temp_list)):
+            min_index = temp_count.index(min(temp_count))
+            temp_tree = Tree()
+            temp_tree.redeclare(temp_list[min_index], temp_count[min_index])
+            temp_result.append(temp_tree)
+            temp_list2.append(temp_list[min_index])
+            del temp_count[min_index]
+            del temp_list[min_index]
+        temp_count2.sort()
+        self.output = [temp_result, temp_count2, input_text, temp_list2, self.filter_input[1]]
+        self.busy = False
 
 
-class FilterHuffman():
+class FilterHuffman:
     def __init__(self):
         self.busy = False
         self.dict_converted = {}
@@ -136,7 +138,7 @@ class FilterHuffman():
                 temp_count = temp_left.count + temp_right.count
                 temp_parent.count = temp_count
                 list_count.append(temp_count)
-                list_count.sort(reverse=True)
+                list_count.sort()
                 temp_index = list_count.index(temp_count)
                 list_alphabet = list_alphabet[:temp_index] + [temp_parent] + list_alphabet[temp_index:]
                 alpha_count -= 1
@@ -148,7 +150,7 @@ class FilterHuffman():
             self.busy = False
 
 
-class FilterEncode():
+class FilterEncode:
     def __init__(self):
         self.busy = False
         self.output = None
@@ -175,15 +177,15 @@ class FilterEncode():
             it = 0
             size = len(result)
             while it < size:
-                temp_int = int(result[it:it+8], 2)
-                final_result += chr(temp_int)
+                temp = result[it:it+8]
+                final_result += binascii.unhexlify(temp)
                 it += 8
 
             self.output = [len(plain_text), dict_converted, final_result, self.filter_input[2], self.filter_input[3]]
             self.busy = False
 
 
-class FilterWrite():
+class FilterWrite:
     def __init__(self):
         self.busy = False
         self.processing = ""
@@ -200,7 +202,7 @@ class FilterWrite():
             converted_data = self.filter_input[2]
             rank_alphabet = self.filter_input[3]
             filename = self.filter_input[4]
-            output_file = filename + "d2f"
+            output_file = filename + ".d2f"
             temp = False
             lock_file = None
 
@@ -223,11 +225,17 @@ class FilterWrite():
 
             result = str(length) + "_"
             for i in rank_alphabet:
-                result += chr(int(dict_converted[i], 2))
+                temp = dict_converted[i]
+                length = len(temp)
+                count_zero = length % 8
+                if count_zero != 0:
+                    temp += '0' * count_zero
+                temp = binascii.unhexlify(temp)
+                result += str(length) + "-=-" + temp + "" + "-|=" + i
                 if rank_alphabet.index(i) < len(rank_alphabet) - 1:
-                    result += "_|_"
+                    result += "-|="
 
-            output_file = filename + "d2c"
+            output_file = filename + ".d2c"
             if os.path.isfile(output_file):
                 lock_file = FileLock(output_file)
                 status = lock_file.is_locked()
@@ -248,42 +256,47 @@ class FilterWrite():
 class Pipe(threading.Thread):
     def __init__(self):
         threading.Thread.__init__(self)
+        self._stop = threading.Event()
         self.storage_data = []
         self.in_work = ""
         self.prev_filter = None
         self.next_filter = None
+        self.running = True
+
+    def stop(self):
+        self._stop.set()
+        self.running = False
 
     def add_storage(self, data):
         self.storage_data.append(data)
 
     def check_prev(self):
-        while True:
-            if not self.prev_filter.busy:
-                temp_value = self.prev_filter.output
-                temp_key = self.prev_filter.processing
-                self.in_work = temp_key
-                self.storage_data.append([temp_key, temp_value])
+        if not self.prev_filter.busy and self.prev_filter.output:
+            temp_value = self.prev_filter.output
+            self.prev_filter.output = None
+            temp_key = self.prev_filter.processing
+            self.in_work = temp_key
+            self.storage_data.append([temp_key, temp_value])
 
     def check_next(self):
-        while True:
-            if not self.next_filter.busy and len(self.storage_data) > 0:
-                temp_data = self.storage_data.pop(0)
-                self.next_filter.insert_input(temp_data)
-                self.next_filter.run()
+        size = len(self.storage_data)
+        if not self.next_filter.busy and size > 0:
+            temp_data = self.storage_data.pop(0)
+            self.next_filter.insert_input(temp_data)
+            self.next_filter.run()
 
     def run(self):
-        thread_list = []
-        if self.prev_filter:
-            temp = threading.Thread(self.check_prev())
-            thread_list.append(temp)
-            temp.start()
-        if self.next_filter:
-            temp2 = threading.Thread(self.check_next())
-            thread_list.append(temp2)
-            temp2.start()
+        while not exit_flag:
+            if self.prev_filter:
+                self.check_prev()
+            if self.next_filter:
+                self.check_next()
+
+        self.running = False
 
 
 def main():
+    global exit_flag
     list_pipe = []
     head_pipe = Pipe()
     list_pipe.append(head_pipe)
@@ -306,6 +319,7 @@ def main():
     list_pipe[4].next_filter = fifth_filter
 
     for i in list_pipe:
+        i.setDaemon(True)
         i.start()
 
     print("Filename with format:")
@@ -317,10 +331,11 @@ def main():
         else:
             print "File not found"
 
-        print("Filename with format:")
-        # sys.stdout.write(">> ")
-        name_file = sys.stdin.readline()
+        name_file = sys.stdin.readline().strip()
+
+    exit_flag = True
+    for i in range(0, 5):
+        list_pipe[i].join()
 
 
-t_main = threading.Thread(main())
-t_main.start()
+main()
