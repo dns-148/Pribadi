@@ -15,10 +15,10 @@ class Filter:
         self.output = None
         self.processing = ""
         self.mode = ""
-        self.__filter_input = None
+        self._filter_input = None
 
     def insert_input(self, filter_input):
-        self.__filter_input = filter_input[2]
+        self._filter_input = filter_input[2]
         self.processing = filter_input[1]
         self.mode = filter_input[0]
 
@@ -72,7 +72,7 @@ class FilterConstruct(Filter):
     def run(self):
         self.busy = True
         print "--ID " + self.processing + " Running FilterConstruct"
-        input_text = self.__filter_input[0]
+        input_text = self._filter_input[0]
         temp_count = []
         temp_result = []
         temp_list = list(set(input_text))
@@ -90,7 +90,7 @@ class FilterConstruct(Filter):
             del temp_count[min_index]
             del temp_list[min_index]
         temp_count2.sort()
-        self.output = [temp_result, temp_count2, input_text, temp_list2, self.__filter_input[1]]
+        self.output = [temp_result, temp_count2, input_text, temp_list2, self._filter_input[1]]
         self.busy = False
 
 
@@ -111,11 +111,11 @@ class FilterHuffman(Filter):
             return
 
     def run(self):
-        if self.__filter_input:
+        if self._filter_input:
             self.busy = True
             print "--ID " + self.processing + " Running FilterHuffman"
-            list_alphabet = self.__filter_input[0]
-            list_count = self.__filter_input[1]
+            list_alphabet = self._filter_input[0]
+            list_count = self._filter_input[1]
             alpha_count = len(list_alphabet)
             while alpha_count > 1:
                 temp_left = list_alphabet.pop(0)
@@ -137,7 +137,7 @@ class FilterHuffman(Filter):
             self.get_result("", list_alphabet.pop(0))
             result = copy(self.__dict_converted)
             self.__dict_converted.clear()
-            self.output = [result, self.__filter_input[2], self.__filter_input[3], self.__filter_input[4]]
+            self.output = [result, self._filter_input[2], self._filter_input[3], self._filter_input[4]]
             self.busy = False
 
 
@@ -147,8 +147,8 @@ class FilterEncode(Filter):
         self.busy = True
         print "--ID " + self.processing + " Running FilterEncode"
         result = ""
-        dict_converted = self.__filter_input[0]
-        plain_text = self.__filter_input[1]
+        dict_converted = self._filter_input[0]
+        plain_text = self._filter_input[1]
         for i in plain_text:
             result += dict_converted[i]
 
@@ -163,7 +163,7 @@ class FilterEncode(Filter):
             final_result += chr(temp)
             it += 8
 
-        self.output = [len(plain_text), dict_converted, final_result, self.__filter_input[2], self.__filter_input[3]]
+        self.output = [len(plain_text), dict_converted, final_result, self._filter_input[2], self._filter_input[3]]
         self.busy = False
 
 
@@ -172,11 +172,11 @@ class FilterWrite(Filter):
     def run(self):
         self.busy = True
         if self.mode == "encode":
-            length = self.__filter_input[0]
-            dict_converted = self.__filter_input[1]
-            converted_data = self.__filter_input[2]
-            rank_alphabet = self.__filter_input[3]
-            filename = self.__filter_input[4]
+            length = self._filter_input[0]
+            dict_converted = self._filter_input[1]
+            converted_data = self._filter_input[2]
+            rank_alphabet = self._filter_input[3]
+            filename = self._filter_input[4]
             output_file = filename + ".d2f"
             temp = False
             lock_file = None
@@ -205,9 +205,9 @@ class FilterWrite(Filter):
                 if count_zero != 0:
                     temp = '0' * count_zero + temp
                 temp = int(temp, 2)
-                result += str(length) + "-" + str(temp) + "" + "-|=" + i
+                result += str(length) + "-" + str(temp) + "" + "/|" + i
                 if rank_alphabet.index(i) < len(rank_alphabet) - 1:
-                    result += "/|"
+                    result += "=*"
 
             output_file = filename + ".d2c"
             if os.path.isfile(output_file):
@@ -226,8 +226,8 @@ class FilterWrite(Filter):
                 lock_file.release()
 
             if self.mode == "decode":
-                filename = self.__filter_input[0]
-                converted_data = self.__filter_input[0]
+                filename = self._filter_input[0]
+                converted_data = self._filter_input[0]
                 temp_pos = filename.rfind('.d2f')
                 filename = filename[:temp_pos]
 
@@ -254,7 +254,8 @@ class FilterDictionary(Filter):
 
     def run(self):
         self.busy = True
-        filename = self.__filter_input[1]
+        print "--ID " + self.processing + " Running FilterDictionary"
+        filename = self._filter_input[1]
         temp_pos = filename.rfind('.')
         filename = filename[:temp_pos]
         filename += ".d2c"
@@ -274,12 +275,11 @@ class FilterDictionary(Filter):
         temp_pos = temp.find('_')
         size = int(temp[:temp_pos])
         temp = temp[temp_pos + 1:]
-        temp_list = temp.split('-|=')
+        temp_list = temp.split("=*")
         dict_binary = {}
-
         for i in range(0, len(temp_list)):
             temp = temp_list[i]
-            temp_list2 = temp.split('/|')
+            temp_list2 = temp.split("/|")
             temp_list3 = temp_list2[0].split('-')
             temp_binary = "{0:b}".format(int(temp_list3[1]))
             temp_length = int(temp_list3[0])
@@ -294,7 +294,7 @@ class FilterDictionary(Filter):
 
             dict_binary[bin_val] = temp_list2[1]
 
-        self.output = [filename, size, dict_binary, self.__filter_input[0]]
+        self.output = [filename, size, dict_binary, self._filter_input[0]]
         self.busy = False
 
 
@@ -302,11 +302,13 @@ class FilterDecode(Filter):
 
     def run(self):
         self.busy = True
-        size = self.__filter_input[1]
-        dict_binary = self.__filter_input[2]
-        text = self.__filter_input[3]
+        print "--ID " + self.processing + " Running FilterDecode"
+        size = self._filter_input[1]
+        dict_binary = self._filter_input[2]
+        text = self._filter_input[3]
         temp_result = ""
         for i in text:
+            print i
             temp_result += "{0:8b}".format(int(i))
 
         result = ""
@@ -328,7 +330,7 @@ class FilterDecode(Filter):
                 found = False
                 temp = ""
 
-        self.output = [self.__filter_input[0], result]
+        self.output = [self._filter_input[0], result]
         self.busy = False
 
 
@@ -421,10 +423,18 @@ def main():
     print("Filename with format:")
     name_file = sys.stdin.readline().strip()
     while name_file != "EXIT":
-        if os.path.isfile(name_file):
-            list_pipe[0].add_storage(name_file)
-        else:
-            print "File not found"
+        temp_list = name_file.split("||")
+        for i in temp_list:
+            temp_pos = i.rfind("/")
+            filename = i[:temp_pos]
+            if os.path.isfile(filename):
+                if "/e" in i:
+                    mode = "encode"
+                else:
+                    mode = "decode"
+                list_pipe[0].add_storage([mode, filename])
+            else:
+                print "File not found"
 
         name_file = sys.stdin.readline().strip()
 
@@ -432,5 +442,7 @@ def main():
     for i in range(0, 5):
         list_pipe[i].join()
 
+    for i in list_filter:
+        del i
 
 main()
