@@ -171,6 +171,7 @@ class FilterWrite(Filter):
 
     def run(self):
         self.busy = True
+        print "--ID " + self.processing + " Running FilterWrite"
         if self.mode == "encode":
             length = self._filter_input[0]
             dict_converted = self._filter_input[1]
@@ -181,7 +182,6 @@ class FilterWrite(Filter):
             temp = False
             lock_file = None
 
-            print "--ID " + self.processing + " Running FilterWrite"
             if os.path.isfile(output_file):
                 lock_file = FileLock(output_file)
                 status = lock_file.is_locked()
@@ -225,28 +225,31 @@ class FilterWrite(Filter):
             if temp:
                 lock_file.release()
 
-            if self.mode == "decode":
-                filename = self._filter_input[0]
-                converted_data = self._filter_input[0]
-                temp_pos = filename.rfind('.d2f')
-                filename = filename[:temp_pos]
+        if self.mode == "decode":
+            filename = self._filter_input[0]
+            converted_data = self._filter_input[1]
+            temp_pos = filename.rfind('.')
+            filename = filename[:temp_pos]
+            temp = False
+            lock_file = None
+            # print filename
 
-                if os.path.isfile(filename):
-                    lock_file = FileLock(filename)
+            if os.path.isfile(filename):
+                lock_file = FileLock(filename)
+                status = lock_file.is_locked()
+                while status:
+                    time.sleep(2)
                     status = lock_file.is_locked()
-                    while status:
-                        time.sleep(2)
-                        status = lock_file.is_locked()
+                lock_file.acquire()
+                temp = True
 
-                    lock_file.acquire()
-                    temp = True
+            file_open = open(filename, "wb")
+            file_open.write(converted_data)
+            file_open.close()
+            if temp:
+                lock_file.release()
 
-                file_open = open(filename, "wb")
-                file_open.write(converted_data)
-                file_open.close()
-                if temp:
-                    lock_file.release()
-
+        print "--ID " + self.processing + " Finish"
         self.busy = False
 
 
@@ -282,13 +285,15 @@ class FilterDictionary(Filter):
             temp_list2 = temp.split("/|")
             temp_list3 = temp_list2[0].split('-')
             temp_binary = "{0:b}".format(int(temp_list3[1]))
+            temp_binary = temp_binary.replace(" ", "")
             temp_length = int(temp_list3[0])
             if temp_length < len(temp_binary):
                 range_binary = len(temp_binary) - temp_length
                 bin_val = temp_binary[range_binary:]
             elif temp_length > len(temp_binary):
-                range_binary = len(temp_binary) - temp_length
-                bin_val = '0' * range_binary + temp_binary
+                range_binary = temp_length - len(temp_binary)
+                bin_val = "0" * range_binary
+                bin_val += temp_binary
             else:
                 bin_val = temp_binary
 
@@ -305,12 +310,12 @@ class FilterDecode(Filter):
         print "--ID " + self.processing + " Running FilterDecode"
         size = self._filter_input[1]
         dict_binary = self._filter_input[2]
-        text = self._filter_input[3]
+        text = str(self._filter_input[3])
         temp_result = ""
         for i in text:
-            print i
-            temp_result += "{0:8b}".format(int(i))
+            temp_result += "{0:8b}".format(ord(i))
 
+        temp_result = temp_result.replace(" ", "0")
         result = ""
         count = 0
         temp = ""
