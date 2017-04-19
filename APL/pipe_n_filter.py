@@ -4,7 +4,8 @@ import os.path
 from copy import copy
 from lockfile import FileLock
 from datetime import datetime
-import time
+# import time
+from random import randint
 
 exit_flag = False
 
@@ -16,8 +17,10 @@ class Filter:
         self.processing = ""
         self.mode = ""
         self._filter_input = None
+        self.taken = True
 
     def insert_input(self, filter_input):
+        self.taken = False
         self._filter_input = filter_input[2]
         self.processing = filter_input[1]
         self.mode = filter_input[0]
@@ -28,12 +31,13 @@ class FilterInput(Filter):
     __plain_data = ""
 
     def insert_input(self, filter_input):
+        self.taken = False
         self.mode = filter_input[0]
         self.__filename = filter_input[1]
 
     def run(self):
         self.busy = True
-        key = datetime.now().strftime('%Y%m%d%H%M%S')
+        key = datetime.now().strftime('%Y%m%d%H%M%S') + str(randint(100, 199))
         self.processing = key
         print "--ID " + self.processing + " Running FilterInput "
         self.output = None
@@ -179,22 +183,19 @@ class FilterWrite(Filter):
             rank_alphabet = self._filter_input[3]
             filename = self._filter_input[4]
             output_file = filename + ".d2f"
-            temp = False
             lock_file = None
 
             if os.path.isfile(output_file):
                 lock_file = FileLock(output_file)
                 status = lock_file.is_locked()
                 while status:
-                    time.sleep(2)
                     status = lock_file.is_locked()
-
                 lock_file.acquire()
-                temp = True
+
             file_open = open(output_file, "wb")
             file_open.write(converted_data)
             file_open.close()
-            if temp:
+            if lock_file:
                 lock_file.release()
 
             result = str(length) + "_"
@@ -209,20 +210,20 @@ class FilterWrite(Filter):
                 if rank_alphabet.index(i) < len(rank_alphabet) - 1:
                     result += "=*"
 
+            lock_file = None
             output_file = filename + ".d2c"
             if os.path.isfile(output_file):
                 lock_file = FileLock(output_file)
                 status = lock_file.is_locked()
                 while status:
-                    time.sleep(2)
                     status = lock_file.is_locked()
                 lock_file = FileLock(output_file)
                 lock_file.acquire()
-                temp = True
+
             file_open = open(output_file, "wb")
             file_open.write(result)
             file_open.close()
-            if temp:
+            if lock_file:
                 lock_file.release()
 
         if self.mode == "decode":
@@ -230,7 +231,7 @@ class FilterWrite(Filter):
             converted_data = self._filter_input[1]
             temp_pos = filename.rfind('.')
             filename = filename[:temp_pos]
-            temp = False
+            # temp = False
             lock_file = None
             # print filename
 
@@ -238,17 +239,17 @@ class FilterWrite(Filter):
                 lock_file = FileLock(filename)
                 status = lock_file.is_locked()
                 while status:
-                    time.sleep(2)
                     status = lock_file.is_locked()
                 lock_file.acquire()
-                temp = True
+                # temp = True
 
             file_open = open(filename, "wb")
             file_open.write(converted_data)
             file_open.close()
-            if temp:
+            if lock_file:
                 lock_file.release()
 
+        self.taken = True
         print "--ID " + self.processing + " Finish"
         self.busy = False
 
@@ -357,16 +358,21 @@ class Pipe(threading.Thread):
         self.__storage_data.append(data)
 
     def check_prev(self):
+        # if self.prev_filter.output:
+        #     print self.prev_filter.processing
+        #     print self.in_mode
         if not self.prev_filter.busy and self.prev_filter.output and self.prev_filter.mode == self.in_mode:
             temp_value = self.prev_filter.output
             temp_mode = self.in_mode
             self.prev_filter.output = None
+            self.prev_filter.taken = True
             temp_key = self.prev_filter.processing
             self.__storage_data.append([temp_mode, temp_key, temp_value])
 
     def check_next(self):
         size = len(self.__storage_data)
-        if not self.next_filter.busy and size > 0:
+
+        if not self.next_filter.busy and size > 0 and self.next_filter.taken:
             temp_data = self.__storage_data.pop(0)
             self.next_filter.insert_input(temp_data)
             self.next_filter.run()
