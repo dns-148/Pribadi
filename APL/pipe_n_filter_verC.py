@@ -369,6 +369,7 @@ class Pipe(threading.Thread):
             if not self.next_filter.busy and self.next_filter.taken and self.in_mode == temp[0]:
                 temp_data = self.__storage_data.pop(0)
                 self.prev = temp_data[1]
+                self.next_filter.output = False
                 self.different = False
                 self.next_filter.insert_input(temp_data)
                 self.next_filter.run()
@@ -426,7 +427,7 @@ class Checker(threading.Thread):
                     if list_pipe[4].prev_filter.output is None:
                         self.construct_decode()
                         break
-                    elif list_pipe[4].prev == list_pipe[0].prev:
+                    elif list_pipe[4].prev == list_pipe[0].prev and list_pipe[4].next_filter.output:
                         if list_pipe[0].in_mode == "encode":
                             self.construct_decode()
                             break
