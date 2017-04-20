@@ -4,7 +4,7 @@ import os.path
 from copy import copy
 from lockfile import FileLock
 from datetime import datetime
-# import time
+import time
 from random import randint
 
 exit_flag = False
@@ -421,7 +421,7 @@ class Checker(threading.Thread):
 
     def run(self):
         while not exit_flag:
-            # time.sleep(2)
+            time.sleep(2)
             if list_pipe[0].different:
                 while True:
                     if list_pipe[4].prev_filter.output is None:
