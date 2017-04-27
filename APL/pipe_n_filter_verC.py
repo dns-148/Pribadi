@@ -154,6 +154,9 @@ class FilterEncode(Filter):
         result = ""
         dict_converted = self._filter_input[0]
         plain_text = self._filter_input[1]
+        rank_alphabet = self._filter_input[2]
+        filename = self._filter_input[3]
+
         for i in plain_text:
             result += dict_converted[i]
 
@@ -168,7 +171,27 @@ class FilterEncode(Filter):
             final_result += chr(temp)
             it += 8
 
-        self.output = [len(plain_text), dict_converted, final_result, self._filter_input[2], self._filter_input[3]]
+        length = len(plain_text)
+        length_text = str(len(final_result))
+
+        result = str(length) + "_"
+
+        for i in rank_alphabet:
+            temp = dict_converted[i]
+            length = len(dict_converted[i])
+            count_zero = length % 8
+            if count_zero != 0:
+                temp = '0' * count_zero + temp
+            temp = int(temp, 2)
+            result += str(length) + "-" + str(temp) + "" + "/|" + i
+            if rank_alphabet.index(i) < len(rank_alphabet) - 1:
+                result += "=*"
+
+        temp = length_text + "_"
+        temp2 = final_result + result
+        temp += temp2
+
+        self.output = [filename, temp]
         self.busy = False
 
 
@@ -176,67 +199,31 @@ class FilterWrite(Filter):
 
     def run(self):
         self.busy = True
+        filename = self._filter_input[0]
+
+        data = self._filter_input[1]
         print "--ID " + self.processing + " Running FilterWrite"
         if self.mode == "encode":
-            length = self._filter_input[0]
-            dict_converted = self._filter_input[1]
-            converted_data = self._filter_input[2]
-            rank_alphabet = self._filter_input[3]
-            filename = self._filter_input[4]
             output_file = filename + ".d2f"
-            lock_file = None
-            length_text = str(len(converted_data))
 
-            result = str(length) + "_"
-            for i in rank_alphabet:
-                temp = dict_converted[i]
-                length = len(dict_converted[i])
-                count_zero = length % 8
-                if count_zero != 0:
-                    temp = '0' * count_zero + temp
-                temp = int(temp, 2)
-                result += str(length) + "-" + str(temp) + "" + "/|" + i
-                if rank_alphabet.index(i) < len(rank_alphabet) - 1:
-                    result += "=*"
-
-            if os.path.isfile(output_file):
-                lock_file = FileLock(output_file)
-                status = lock_file.is_locked()
-                while status:
-                    status = lock_file.is_locked()
-                lock_file.acquire()
-
-            file_open = open(output_file, "wb")
-            temp = length_text + "_"
-            temp2 = converted_data + result
-            temp += temp2
-            file_open.write(temp)
-            file_open.close()
-            if lock_file:
-                lock_file.release()
-
-        if self.mode == "decode":
-            filename = self._filter_input[0]
-            converted_data = self._filter_input[1]
+        else:
             temp_pos = filename.rfind('.')
-            filename = filename[:temp_pos]
-            # temp = False
-            lock_file = None
-            # print filename
+            output_file = filename[:temp_pos]
 
-            if os.path.isfile(filename):
-                lock_file = FileLock(filename)
+        lock_file = None
+
+        if os.path.isfile(output_file):
+            lock_file = FileLock(output_file)
+            status = lock_file.is_locked()
+            while status:
                 status = lock_file.is_locked()
-                while status:
-                    status = lock_file.is_locked()
-                lock_file.acquire()
-                # temp = True
+            lock_file.acquire()
 
-            file_open = open(filename, "wb")
-            file_open.write(converted_data)
-            file_open.close()
-            if lock_file:
-                lock_file.release()
+        file_open = open(output_file, "wb")
+        file_open.write(data)
+        file_open.close()
+        if lock_file:
+            lock_file.release()
 
         self.taken = True
         print "--ID " + self.processing + " Finish"
@@ -424,16 +411,18 @@ class Checker(threading.Thread):
             time.sleep(2)
             if list_pipe[0].different:
                 while True:
-                    if list_pipe[4].prev_filter.output is None:
-                        self.construct_decode()
-                        break
-                    elif list_pipe[4].prev == list_pipe[0].prev and list_pipe[4].next_filter.output:
-                        if list_pipe[0].in_mode == "encode":
+                    if not list_pipe[1].prev_filter.busy and not list_pipe[2].prev_filter.busy \
+                            and not list_pipe[3].prev_filter.busy:
+                        if list_pipe[4].prev_filter.output is None:
                             self.construct_decode()
                             break
-                        else:
-                            self.construct_encode()
-                            break
+                        elif list_pipe[4].prev == list_pipe[0].prev and list_pipe[4].next_filter.output:
+                            if list_pipe[0].in_mode == "encode":
+                                self.construct_decode()
+                                break
+                            else:
+                                self.construct_encode()
+                                break
 
 
 class Main:
@@ -444,7 +433,6 @@ class Main:
             list_pipe.append(Pipe())
             list_pipe[i].in_mode = "encode"
 
-        list_pipe[0].last_filter = list_pipe[4]
         list_filter.append(FilterInput())
         list_filter.append(FilterConstruct())
         list_filter.append(FilterHuffman())
@@ -484,7 +472,7 @@ class Main:
                 temp_pos = i.rfind("/")
                 filename = i[:temp_pos]
                 if os.path.isfile(filename):
-                    key = datetime.now().strftime('%Y%m%d%H%M%S') + str(randint(100, 199))
+                    key = datetime.now().strftime('%Y%m%d%H%M%S') + str(randint(100, 999))
                     if "/e" in i:
                         mode = "encode"
                     else:
