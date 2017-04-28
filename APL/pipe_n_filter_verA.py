@@ -47,11 +47,18 @@ class FilterInput(Filter):
 
         while status:
             status = lock_file.is_locked()
-        if os.path.isfile(self.__filename):
-            file_open = open(self.__filename, "rb")
-            self.__plain_data = file_open.read()
-            file_open.close()
+
+        file_open = open(self.__filename, "rb")
+        self.__plain_data = file_open.read()
+        file_open.close()
+
+        if len(self.__plain_data) < 1:
+            print "Error 400! File input is empty. [File - " + self.__filename + "]\n--Terminating ID " + \
+                  self.processing + " in FilterInput."
+            self.taken = True
+        else:
             self.output = [self.__plain_data, self.__filename]
+
         self.busy = False
 
 
@@ -233,41 +240,49 @@ class FilterWrite(Filter):
 class FilterDictionary(Filter):
 
     def run(self):
-        self.busy = True
-        print "--ID " + self.processing + " Running FilterDictionary"
-        temp_text = self._filter_input[0]
-        temp_pos = temp_text.find('_')
-        size = int(temp_text[:temp_pos])
-        data = temp_text[temp_pos+1:]
-        encoded_data = data[:size]
-        temp = data[size:]
+        # noinspection PyBroadException
+        try:
+            self.busy = True
+            print "--ID " + self.processing + " Running FilterDictionary"
+            temp_text = self._filter_input[0]
+            temp_pos = temp_text.find('_')
+            size = int(temp_text[:temp_pos])
+            data = temp_text[temp_pos+1:]
+            encoded_data = data[:size]
+            temp = data[size:]
 
-        temp_pos = temp.find('_')
-        size = int(temp[:temp_pos])
-        temp = temp[temp_pos + 1:]
-        temp_list = temp.split("=*")
-        dict_binary = {}
-        for i in range(0, len(temp_list)):
-            temp = temp_list[i]
-            temp_list2 = temp.split("/|")
-            temp_list3 = temp_list2[0].split('-')
-            temp_binary = "{0:b}".format(int(temp_list3[1]))
-            temp_binary = temp_binary.replace(" ", "")
-            temp_length = int(temp_list3[0])
-            if temp_length < len(temp_binary):
-                range_binary = len(temp_binary) - temp_length
-                bin_val = temp_binary[range_binary:]
-            elif temp_length > len(temp_binary):
-                range_binary = temp_length - len(temp_binary)
-                bin_val = "0" * range_binary
-                bin_val += temp_binary
-            else:
-                bin_val = temp_binary
+            temp_pos = temp.find('_')
+            size = int(temp[:temp_pos])
+            temp = temp[temp_pos + 1:]
+            temp_list = temp.split("=*")
+            dict_binary = {}
+            for i in range(0, len(temp_list)):
+                temp = temp_list[i]
+                temp_list2 = temp.split("/|")
+                temp_list3 = temp_list2[0].split('-')
+                temp_binary = "{0:b}".format(int(temp_list3[1]))
+                temp_binary = temp_binary.replace(" ", "")
+                temp_length = int(temp_list3[0])
+                if temp_length < len(temp_binary):
+                    range_binary = len(temp_binary) - temp_length
+                    bin_val = temp_binary[range_binary:]
+                elif temp_length > len(temp_binary):
+                    range_binary = temp_length - len(temp_binary)
+                    bin_val = "0" * range_binary
+                    bin_val += temp_binary
+                else:
+                    bin_val = temp_binary
 
-            dict_binary[bin_val] = temp_list2[1]
+                dict_binary[bin_val] = temp_list2[1]
 
-        self.output = [self._filter_input[1], size, dict_binary, encoded_data]
-        self.busy = False
+            self.output = [self._filter_input[1], size, dict_binary, encoded_data]
+            self.busy = False
+
+        except:
+            print "Error 500! File input either corrupt or invalid. [File - " + self._filter_input[1] + \
+                  "]\n--Terminating ID " + self.processing + " in FilterDictionary."
+            self.busy = False
+            self.taken = True
 
 
 class FilterConData(Filter):
@@ -416,18 +431,25 @@ def main():
         for i in temp_list:
             temp_pos = i.rfind("/")
             filename = i[:temp_pos]
-            if os.path.isfile(filename):
-                if "/e" in i:
-                    mode = "encode"
-                else:
-                    mode = "decode"
-                list_pipe[0].add_storage([mode, filename])
+            if "/e" not in i and "/d" not in i:
+                print "Error 400! No operation command detected. [File - " + i + "]"
             else:
-                print "File not found"
+                if os.path.isfile(filename):
+                    if "/e" in i:
+                        mode = "encode"
+                        list_pipe[0].add_storage([mode, filename])
+                    elif ".d2f" == i[len(i) - 6:len(i) - 2]:
+                        mode = "decode"
+                        list_pipe[0].add_storage([mode, filename])
+                    else:
+                        print "Error 400! Invalid file format. [File - " + i + "]"
+                else:
+                    print "Error 404! File not found. [File - " + i + "]"
 
         name_file = sys.stdin.readline().strip()
 
     exit_flag = True
+    print "Exiting program."
     for i in range(0, 5):
         list_pipe[i].join()
 
